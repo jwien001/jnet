@@ -72,7 +72,7 @@ public class Server implements Runnable {
          return true;
     }
     
-    synchronized void clientDisconnnected(String clientName) {
+    void clientDisconnnected(String clientName) {
         try {
             disconnect(clientName);
             listener.clientDisconnected(this, clientName);
