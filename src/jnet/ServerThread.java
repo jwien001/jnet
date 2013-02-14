@@ -44,11 +44,7 @@ public class ServerThread extends Thread {
                 
                 server.handle(clientName, str);
             } catch (IOException e) {
-                try {
-                    server.disconnect(clientName);
-                } catch (IOException ex) {
-                    ex.printStackTrace();
-                }
+                server.clientDisconnnected(clientName);
                 break;
             }
         }

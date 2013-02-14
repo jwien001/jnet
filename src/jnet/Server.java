@@ -60,11 +60,25 @@ public class Server implements Runnable {
      * Disconnects the specified client.
      * 
      * @param clientName the name of the client to disconnect (the same name passed into {@link ServerListener#messageReceived(Server, String, String)})
+     * @returns true if the clientName was valid and the client disconnected, false otherwise
      * @throws IOException if an error occurs when disconnecting the client
      */
-    public synchronized void disconnect(String clientName) throws IOException {
+    public synchronized boolean disconnect(String clientName) throws IOException {
          ServerThread client = clients.remove(clientName);
+         if (client == null)
+             return false;
+         
          client.close();
+         return true;
+    }
+    
+    synchronized void clientDisconnnected(String clientName) {
+        try {
+            disconnect(clientName);
+            listener.clientDisconnected(this, clientName);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     void handle(String clientName, String message) {
@@ -86,6 +100,7 @@ public class Server implements Runnable {
                 newClient = new ServerThread(this, clientSocket);
                 clients.put(newClient.getClientName(), newClient);
                 newClient.start();
+                listener.clientConnected(this, newClient.getClientName());
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -107,6 +122,14 @@ public class Server implements Runnable {
                         }
                     }
                     s.send(clientName, message + message);
+                }
+
+                @Override
+                public synchronized void clientConnected(Server server, String clientName) {
+                }
+
+                @Override
+                public synchronized void clientDisconnected(Server server, String clientName) {
                 }
             });
             while (true) {
