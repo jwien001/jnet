@@ -56,6 +56,7 @@ public class Client {
 
     /**
      * Connects to the server at the specified IP address on the specified port number.
+     * If a connection is currently open, it will close it first.
      * 
      * @param ipAddress the IP address of the server to connect to
      * @param portNumber the port number on the server to connect on

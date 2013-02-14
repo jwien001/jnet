@@ -14,7 +14,7 @@ public class Server implements Runnable {
     private final Thread thread;
     
     /**
-     * Creates a new Server and beings listening on the specified port.
+     * Creates a new Server and begins listening on the specified port.
      * 
      * @param portNumber the port number to listen on
      * @param listener an object that will be notified when a message is received
