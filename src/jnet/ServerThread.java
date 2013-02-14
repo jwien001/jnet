@@ -26,14 +26,10 @@ public class ServerThread extends Thread {
         out.println(message);
     }
     
-    void close() {
-        try {
-            out.close();
-            in.close();
-            socket.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+    void close() throws IOException {
+        out.close();
+        in.close();
+        socket.close();
     }
     
     @Override
@@ -48,7 +44,11 @@ public class ServerThread extends Thread {
                 
                 server.handle(clientName, str);
             } catch (IOException e) {
-                server.disconnect(clientName);
+                try {
+                    server.disconnect(clientName);
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                }
                 break;
             }
         }

@@ -9,7 +9,7 @@ import java.util.Map;
 
 public class Server implements Runnable {
     private final ServerSocket serverSocket;
-    private final NetworkingListener listener;    
+    private final ServerListener listener;    
     private final Map<String, ServerThread> clients;
     private final Thread thread;
     
@@ -20,7 +20,7 @@ public class Server implements Runnable {
      * @param listener an object that will be notified when a message is received
      * @throws IOException if the server fails to open a socket
      */
-    public Server(int portNumber, NetworkingListener listener) throws IOException {
+    public Server(int portNumber, ServerListener listener) throws IOException {
         serverSocket = new ServerSocket(portNumber);
         this.listener = listener;
         clients = new HashMap<String, ServerThread>();
@@ -39,17 +39,36 @@ public class Server implements Runnable {
         
         serverSocket.close();
     }
-
-    void handle(String clientName, String message) {
-        String response = listener.messageReceived(message, clientName);
+    
+    /**
+     * Sends a message to the specified client.
+     * 
+     * @param clientName the name of the client to send to (the same name passed into {@link ServerListener#messageReceived(Server, String, String)})
+     * @param message the message to send
+     * @return true if the clientName was valid and the message sent, false otherwise
+     */
+    public boolean send(String clientName, String message) {
+        ServerThread client = clients.get(clientName);
+        if (client == null)
+            return false;
         
-        if (response != null && !response.isEmpty())
-            clients.get(clientName).send(response);
+        client.send(message);
+        return true;
     }
 
-    synchronized void disconnect(String clientName) {
+    /**
+     * Disconnects the specified client.
+     * 
+     * @param clientName the name of the client to disconnect (the same name passed into {@link ServerListener#messageReceived(Server, String, String)})
+     * @throws IOException if an error occurs when disconnecting the client
+     */
+    public synchronized void disconnect(String clientName) throws IOException {
          ServerThread client = clients.remove(clientName);
          client.close();
+    }
+
+    void handle(String clientName, String message) {
+        listener.messageReceived(this, clientName, message);
     }
     
     @Override
@@ -75,10 +94,10 @@ public class Server implements Runnable {
     
     public static void main(String[] args) {
         try {
-            new Server(8000, new NetworkingListener() {                
+            new Server(8000, new ServerListener() {                
                 @Override
-                public synchronized String messageReceived(String message, String address) {
-                    System.out.println("Received: " + message + " from " + address);
+                public synchronized void messageReceived(Server s, String clientName, String message) {
+                    System.out.println("Received: " + message + " from " + clientName);
                     for (int i=1; i<=5; i++) {
                         System.out.println("Waiting " + i + "...");
                         try {
@@ -87,7 +106,7 @@ public class Server implements Runnable {
                             e.printStackTrace();
                         }
                     }
-                    return message + message;
+                    s.send(clientName, message + message);
                 }
             });
             while (true) {
