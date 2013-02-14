@@ -40,7 +40,7 @@ public class Server implements Runnable {
         serverSocket.close();
     }
 
-    synchronized void handle(String clientName, String message) {
+    void handle(String clientName, String message) {
         String response = listener.messageReceived(message, clientName);
         
         if (response != null && !response.isEmpty())
@@ -77,8 +77,16 @@ public class Server implements Runnable {
         try {
             new Server(8000, new NetworkingListener() {                
                 @Override
-                public String messageReceived(String message, String address) {
-                    System.out.println("Received: " + message);
+                public synchronized String messageReceived(String message, String address) {
+                    System.out.println("Received: " + message + " from " + address);
+                    for (int i=1; i<=5; i++) {
+                        System.out.println("Waiting " + i + "...");
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                    }
                     return message + message;
                 }
             });
