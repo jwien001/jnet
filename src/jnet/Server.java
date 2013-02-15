@@ -126,10 +126,12 @@ public class Server implements Runnable {
 
                 @Override
                 public synchronized void clientConnected(Server server, String clientName) {
+                    System.out.println(clientName + " connected");
                 }
 
                 @Override
                 public synchronized void clientDisconnected(Server server, String clientName) {
+                    System.out.println(clientName + " disconnected");
                 }
             });
             while (true) {

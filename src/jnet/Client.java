@@ -9,21 +9,32 @@ import java.net.Socket;
 import java.util.Scanner;
 
 
-public class Client {
+public class Client implements Runnable {
     private String ipAddress;
     private int portNumber;
     
     private Socket socket;
     private PrintWriter out;
     private BufferedReader in;
+    private ClientListener listener;
+    private Thread thread;
     
     /**
      * Creates a new Client networking object without opening a connection.
      * The IP address and port number are set to default values.
      */
     public Client() {
-        this.ipAddress = "127.0.0.1";
-        this.portNumber = 8000;
+        this("127.0.0.1", 8000);
+    }
+    
+    /**
+     * Creates a new Client networking object without opening a connection.
+     * The IP address and port number are set to default values.
+     * 
+     * @param listener an object that will be notified when a message is received
+     */
+    public Client(ClientListener listener) {
+        this("127.0.0.1", 8000, listener);
     }
     
     /**
@@ -33,8 +44,28 @@ public class Client {
      * @param portNumber the port number on the server to connect on
      */
     public Client(String ipAddress, int portNumber) {
-        this.ipAddress = ipAddress;
-        this.portNumber = portNumber;
+        try {
+            init(ipAddress, portNumber, null, false);
+        } catch (IOException e) {
+            // This should never happen, since reconnect() will not be called
+            e.printStackTrace();
+        }
+    }
+    
+    /**
+     * Creates a new Client networking object without opening a connection.
+     * 
+     * @param ipAddress the IP address of the server to connect to
+     * @param portNumber the port number on the server to connect on
+     * @param listener an object that will be notified when a message is received
+     */
+    public Client(String ipAddress, int portNumber, ClientListener listener) {
+        try {
+            init(ipAddress, portNumber, listener, false);
+        } catch (IOException e) {
+            // This should never happen, since reconnect() will not be called
+            e.printStackTrace();
+        }
     }
     
     /**
@@ -43,12 +74,18 @@ public class Client {
      * 
      * @param ipAddress the IP address of the server to connect to
      * @param portNumber the port number on the server to connect on
+     * @param listener an object that will be notified when a message is received
      * @param connectNow true to connect to the server now; false otherwise
      * @throws IOException if the client fails to connect to the server
      */
-    public Client(String ipAddress, int portNumber, boolean connectNow) throws IOException {
+    public Client(String ipAddress, int portNumber, ClientListener listener, boolean connectNow) throws IOException {
+        init(ipAddress, portNumber, listener, connectNow);
+    }
+    
+    private void init(String ipAddress, int portNumber, ClientListener listener, boolean connectNow) throws IOException {
         this.ipAddress = ipAddress;
         this.portNumber = portNumber;
+        this.listener = listener;
         
         if (connectNow)
             reconnect();
@@ -62,11 +99,8 @@ public class Client {
      * @param portNumber the port number on the server to connect on
      * @throws IOException if the client fails to connect to the server
      */
-    public void connect(String ipAddress, int portNumber) throws IOException {
-        this.ipAddress = ipAddress;
-        this.portNumber = portNumber;
-        
-        reconnect();
+    public void connect(String ipAddress, int portNumber, ClientListener listener) throws IOException {
+        init(ipAddress, portNumber, listener, true);
     }
     
     /**
@@ -76,14 +110,26 @@ public class Client {
      * @throws IOException if the client fails to connect to the server
      */
     public void reconnect() throws IOException {
-        if (socket != null)
+        if (socket != null) {
             close();
+            while (thread.isAlive()) {
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
         
         try {
             socket = new Socket();
             socket.connect(new InetSocketAddress(ipAddress, portNumber), 4000);
             out = new PrintWriter(socket.getOutputStream(), true);        
             in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            
+            thread = new Thread(this);
+            thread.start();
+            connected();
         } catch (IOException e) {
             socket = null;
             out = null;
@@ -93,36 +139,16 @@ public class Client {
     }
     
     /**
-     * Sends a message to the server.
+     * Sends a message to the server if the connection is open.
      * The message should not contain any newline characters.
      * 
      * @param message the message to send to the server
-     * @throws IOException
      */
-    public void send(String message) throws IOException {
+    public void send(String message) {
         if (out == null)
-            reconnect();
+            return;
         
         out.println(message);
-    }
-    
-    /**
-     * Receives a message from the server. This method will block until data arrives.
-     * If an error occurs when receiving the response, the connection will be closed and the exception thrown.
-     * 
-     * @return the message from the server
-     * @throws IOException if an error occurs when receiving the server's response
-     */
-    public String receive() throws IOException {
-        if (in == null)
-            reconnect();
-        
-        try {
-            return in.readLine();
-        } catch (IOException e) {
-            close();
-            throw e;
-        }
     }
     
     /**
@@ -130,7 +156,7 @@ public class Client {
      * 
      * @throws IOException if an error occurs when closing the connection
      */
-    public void close() throws IOException {
+    public synchronized void close() throws IOException {
         if (socket == null)
             return;
         
@@ -139,31 +165,106 @@ public class Client {
             in.close();
             socket.close();
         } catch (IOException e) {
+            throw e;
+        } finally {
             socket = null;
             out = null;
             in = null;
-            throw e;
+        }
+    }
+    
+    /**
+     * Checks if the client is currently connected to a server.
+     * 
+     * @return true if the client is connected; false otherwise
+     */
+    public boolean isConnected() {
+        return socket != null && socket.isConnected();
+    }
+    
+    public ClientListener getClientListener() {
+        return listener;
+    }
+    
+    public void setClientListener(ClientListener listener) {
+        this.listener = listener;
+    }
+    
+    synchronized void messageReceived(String message) {
+        if (listener != null)
+            listener.messageReceived(message);
+    }
+    
+    synchronized void connected() {
+        if (listener != null)
+            listener.connected();
+    }
+    
+    synchronized void disconnected() {
+        if (listener != null)
+            listener.disconnected();
+    }
+
+    @Override
+    public void run() {
+        while (true) {
+            try {
+                if (in == null)
+                    // terminate this thread
+                    throw new IOException();
+                
+                String str = in.readLine();
+                
+                if (str == null) 
+                    // End of stream reached, so terminate this thread
+                    throw new IOException();
+                
+                messageReceived(str);
+            } catch (IOException e) {
+                try {
+                    close();
+                    disconnected();
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                }
+                break;
+            }
         }
     }
     
     public static void main(String[] args) {
-        Client c = new Client();
+        Client c = new Client(new ClientListener() {
+            @Override
+            public void messageReceived(String message) {
+                System.out.println(message);
+            }
+            
+            @Override
+            public void disconnected() {
+                System.out.println("Disconnected");
+            }
+            
+            @Override
+            public void connected() {
+            }
+        });
         Scanner scan = new Scanner(System.in);
-        
+
         try {
             c.reconnect();
-            while (true) {
-                String str = scan.nextLine();
+            String str = scan.nextLine();
+            while (c.isConnected()) {
                 if (str.equalsIgnoreCase("exit"))
                     break;
                 
                 c.send(str);
-                System.out.println(c.receive());
+                str = scan.nextLine();
             }
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
             try {
+                scan.close();
                 c.close();
             } catch (IOException e) {
                 e.printStackTrace();
