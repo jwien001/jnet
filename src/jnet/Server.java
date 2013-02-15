@@ -8,10 +8,17 @@ import java.util.Map;
 
 
 public class Server implements Runnable {
-    private final ServerSocket serverSocket;
-    private final ServerListener listener;    
+    private ServerSocket serverSocket;
+    private ServerListener listener;    
     private final Map<String, ServerThread> clients;
-    private final Thread thread;
+    private Thread thread;
+    
+    /**
+     * Creates a new Server.
+     */
+    public Server() {
+        clients = new HashMap<String, ServerThread>();
+    }
     
     /**
      * Creates a new Server and begins listening on the specified port.
@@ -21,9 +28,19 @@ public class Server implements Runnable {
      * @throws IOException if the server fails to open a socket
      */
     public Server(int portNumber, ServerListener listener) throws IOException {
-        serverSocket = new ServerSocket(portNumber);
         this.listener = listener;
         clients = new HashMap<String, ServerThread>();
+        open(portNumber);
+    }
+    
+    /**
+     * Opens a server socket and begins listening on the specified port.
+     * 
+     * @param portNumber the port number to listen on
+     * @throws IOException if the server fails to open a socket
+     */
+    public synchronized void open(int portNumber) throws IOException {
+        serverSocket = new ServerSocket(portNumber);
         thread = new Thread(this);
         thread.start();
     }
@@ -37,7 +54,25 @@ public class Server implements Runnable {
         for (String clientName : clients.keySet())
             disconnect(clientName);
         
-        serverSocket.close();
+        try {
+            serverSocket.close();
+        } catch (IOException e) {
+            throw e;
+        } finally {
+            serverSocket = null;
+        }
+    }
+    
+    public boolean isOpen() {
+        return serverSocket != null && serverSocket.isBound();
+    }
+    
+    public ServerListener getServerListener() {
+        return listener;
+    }
+    
+    public void setServerListener(ServerListener listener) {
+        this.listener = listener;
     }
     
     /**
@@ -71,18 +106,20 @@ public class Server implements Runnable {
          client.close();
          return true;
     }
-    
-    void clientDisconnnected(String clientName) {
-        try {
-            disconnect(clientName);
-            listener.clientDisconnected(this, clientName);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
 
-    void handle(String clientName, String message) {
-        listener.messageReceived(this, clientName, message);
+    void messageReceived(String clientName, String message) {
+        if (listener != null)
+            listener.messageReceived(clientName, message);
+    }
+    
+    void clientConnected(String clientName) {
+        if (listener != null)
+            listener.clientConnected(clientName);
+    }
+    
+    void clientDisconnected(String clientName) {
+        if (listener != null)
+            listener.clientDisconnected(clientName);
     }
     
     @Override
@@ -92,6 +129,11 @@ public class Server implements Runnable {
             try {
                 clientSocket = serverSocket.accept();
             } catch (IOException e) {
+                try {
+                    close();
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                }
                 break;
             }
             
@@ -100,7 +142,8 @@ public class Server implements Runnable {
                 newClient = new ServerThread(this, clientSocket);
                 clients.put(newClient.getClientName(), newClient);
                 newClient.start();
-                listener.clientConnected(this, newClient.getClientName());
+
+                clientConnected(newClient.getClientName());
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -109,9 +152,10 @@ public class Server implements Runnable {
     
     public static void main(String[] args) {
         try {
-            new Server(8000, new ServerListener() {                
+            final Server s = new Server();
+            s.setServerListener(new ServerListener() {                
                 @Override
-                public synchronized void messageReceived(Server s, String clientName, String message) {
+                public void messageReceived(String clientName, String message) {
                     System.out.println("Received: " + message + " from " + clientName);
                     for (int i=1; i<=5; i++) {
                         System.out.println("Waiting " + i + "...");
@@ -125,15 +169,18 @@ public class Server implements Runnable {
                 }
 
                 @Override
-                public synchronized void clientConnected(Server server, String clientName) {
+                public synchronized void clientConnected(String clientName) {
                     System.out.println(clientName + " connected");
                 }
 
                 @Override
-                public synchronized void clientDisconnected(Server server, String clientName) {
+                public synchronized void clientDisconnected(String clientName) {
                     System.out.println(clientName + " disconnected");
                 }
             });
+            
+            s.open(8000);
+            
             while (true) {
                 
             }

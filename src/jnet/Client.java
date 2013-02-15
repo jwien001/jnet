@@ -85,7 +85,8 @@ public class Client implements Runnable {
     private void init(String ipAddress, int portNumber, ClientListener listener, boolean connectNow) throws IOException {
         this.ipAddress = ipAddress;
         this.portNumber = portNumber;
-        this.listener = listener;
+        if (listener != null)
+            this.listener = listener;
         
         if (connectNow)
             reconnect();
@@ -99,8 +100,8 @@ public class Client implements Runnable {
      * @param portNumber the port number on the server to connect on
      * @throws IOException if the client fails to connect to the server
      */
-    public void connect(String ipAddress, int portNumber, ClientListener listener) throws IOException {
-        init(ipAddress, portNumber, listener, true);
+    public void connect(String ipAddress, int portNumber) throws IOException {
+        init(ipAddress, portNumber, null, true);
     }
     
     /**
@@ -260,15 +261,13 @@ public class Client implements Runnable {
                 c.send(str);
                 str = scan.nextLine();
             }
-        } catch (IOException e) {
+
+            c.reconnect();
+            Thread.sleep(5000);
+            c.close();
+            scan.close();
+        } catch (Exception e) {
             e.printStackTrace();
-        } finally {
-            try {
-                scan.close();
-                c.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
         }
     }
 }

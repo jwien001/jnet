@@ -42,9 +42,14 @@ public class ServerThread extends Thread {
                     // End of stream reached, so terminate this thread
                     throw new IOException();
                 
-                server.handle(clientName, str);
+                server.messageReceived(clientName, str);
             } catch (IOException e) {
-                server.clientDisconnnected(clientName);
+                try {
+                    server.disconnect(clientName);
+                    server.clientDisconnected(clientName);
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                }
                 break;
             }
         }
